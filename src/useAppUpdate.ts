@@ -15,7 +15,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     if (reloadRequested) window.location.reload();
   });
   void navigator.serviceWorker
-    .register('/sw.js')
+    .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
     .then((reg) => {
       registration = reg;
       if (reg.waiting && navigator.serviceWorker.controller) {

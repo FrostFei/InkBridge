@@ -18,7 +18,6 @@ import {
   GitBranch,
   Menu,
   MoreHorizontal,
-  PanelRight,
   Plus,
   RefreshCw,
   Search,
@@ -44,17 +43,25 @@ import { exportWorkspaceZip } from './core/export';
 import { blobCacheFor } from './core/blobCache';
 import { GitHubClient } from './github/client';
 import { useAppUpdate } from './useAppUpdate';
+import { useWritingView, type WritingMode } from './useWritingView';
 import { ConnectDialog } from './components/ConnectDialog';
 import { ConflictDialog } from './components/ConflictDialog';
 import { MarkdownPreview } from './components/MarkdownPreview';
+import { NoteActions } from './components/NoteActions';
+import { ResizableSidebar } from './components/ResizableSidebar';
 import { headingId } from './markdown/render';
 import './styles.css';
 
 type Draft = { text: string; revision: number; dirty: boolean; pending?: Promise<boolean> };
 type PathDialog = { kind: 'create' | 'rename' | 'draft'; path: string };
+type NoteOrder = 'asc' | 'desc';
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const basename = (path: string) => path.split('/').pop() || path;
 const noteTitle = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
+const compareNotes = (a: NoteFile, b: NoteFile, order: NoteOrder) =>
+  (order === 'asc' ? 1 : -1) *
+  (basename(a.path).localeCompare(basename(b.path), 'zh-CN') ||
+    a.path.localeCompare(b.path, 'zh-CN'));
 const safeRead = (key: string) => {
   try {
     return localStorage.getItem(key) || '';
@@ -120,10 +127,16 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [recoveryConfirm, setRecoveryConfirm] = useState(false);
   const [query, setQuery] = useState('');
+  const [noteOrder, setNoteOrder] = useState<NoteOrder>(() =>
+    safeRead('inkbridge.noteOrder') === 'desc' ? 'desc' : 'asc',
+  );
   const [panel, setPanel] = useState<'notes' | 'attachments'>('notes');
-  const [preview, setPreview] = useState(true);
-  const [mobileView, setMobileView] = useState<'edit' | 'preview'>('edit');
   const [sidebar, setSidebar] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [bodySize, setBodySize] = useState(() => {
+    const saved = Number(safeRead('inkbridge.bodySize'));
+    return [18, 20, 22].includes(saved) ? saved : 18;
+  });
   const [theme, setTheme] = useState(() => safeRead('inkbridge.theme') || 'light');
   const [externalImages, setExternalImages] = useState(false);
   const [attachmentBusy, setAttachmentBusy] = useState('');
@@ -153,6 +166,7 @@ export default function App() {
         .includes(query.toLocaleLowerCase()),
   );
   const key = `${workspaceId}\u0000${path}`;
+  const writing = useWritingView(key);
   // Mount a newly selected editor from that file immediately. The previous
   // editor's React buffer may still be waiting for its hydration effect.
   const editorText =
@@ -200,6 +214,10 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     safeStore('inkbridge.theme', theme);
   }, [theme]);
+  useEffect(() => {
+    document.documentElement.style.setProperty('--note-font-size', `${bodySize}px`);
+    safeStore('inkbridge.bodySize', String(bodySize));
+  }, [bodySize]);
   useEffect(() => {
     if (!selected && notes.length && !drafts.current.get(key)?.dirty) {
       let cancelled = false;
@@ -355,8 +373,7 @@ export default function App() {
     setSidebar(false);
     setSaveError('');
     if (heading) {
-      setPreview(true);
-      setMobileView('preview');
+      writing.choose('read');
       setTimeout(() => document.getElementById(headingId(heading))?.scrollIntoView(), 100);
     }
   }
@@ -491,7 +508,7 @@ export default function App() {
     : [];
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {sidebar && (
         <button
           className="sidebar-shade"
@@ -499,18 +516,16 @@ export default function App() {
           onClick={() => setSidebar(false)}
         />
       )}
-      <aside className={`sidebar ${sidebar ? 'is-open' : ''}`}>
+      <ResizableSidebar className={`sidebar ${sidebar ? 'is-open' : ''}`}>
         <a className="brand" href="#" onClick={(event) => event.preventDefault()}>
           <span className="brand-mark">
             <BookOpen size={22} strokeWidth={1.6} />
           </span>
-          <span>
-            InkBridge<small>墨桥 · 让思绪自在流动</small>
-          </span>
+          <span>InkBridge</span>
         </a>
         <div className="workspace-card">
           <div className="workspace-caption">
-            <span className="workspace-dot" /> 当前笔记库{' '}
+            笔记库
             <button
               className="icon-button"
               aria-label="连接其他仓库"
@@ -588,6 +603,20 @@ export default function App() {
         </label>
         <div className="tree-heading">
           <span>{query ? `${searchResults.length} 个搜索结果` : '笔记文件'}</span>
+          <select
+            className="note-order"
+            aria-label="笔记排序"
+            title="按笔记名称排序，文件夹顺序不变"
+            value={noteOrder}
+            onChange={(event) => {
+              const next = event.target.value === 'desc' ? 'desc' : 'asc';
+              setNoteOrder(next);
+              safeStore('inkbridge.noteOrder', next);
+            }}
+          >
+            <option value="asc">名称正序</option>
+            <option value="desc">名称倒序</option>
+          </select>
           <button
             className="icon-button"
             aria-label="新建笔记"
@@ -603,23 +632,26 @@ export default function App() {
         <nav className="file-tree" aria-label="笔记文件树">
           {searchResults.length ? (
             query ? (
-              searchResults.map((file) => (
-                <button
-                  key={file.path}
-                  className={`file-row ${path === file.path ? 'selected' : ''}`}
-                  onClick={() => void navigate(file.path)}
-                >
-                  <FileText size={15} />
-                  <span>
-                    {noteTitle(file.path)}
-                    <small>{file.path}</small>
-                  </span>
-                  {file.dirty && <i className="dirty-dot" />}
-                </button>
-              ))
+              [...searchResults]
+                .sort((a, b) => compareNotes(a, b, noteOrder))
+                .map((file) => (
+                  <button
+                    key={file.path}
+                    className={`file-row ${path === file.path ? 'selected' : ''}`}
+                    onClick={() => void navigate(file.path)}
+                  >
+                    <FileText size={15} />
+                    <span>
+                      {noteTitle(file.path)}
+                      <small>{file.path}</small>
+                    </span>
+                    {file.dirty && <i className="dirty-dot" />}
+                  </button>
+                ))
             ) : (
               <FileTree
                 files={searchResults}
+                order={noteOrder}
                 selected={path}
                 onSelect={(next) => void navigate(next)}
               />
@@ -651,28 +683,24 @@ export default function App() {
             <MoreHorizontal size={19} />
           </button>
         </div>
-      </aside>
+      </ResizableSidebar>
       <main className="main-panel">
         <header className="topbar">
           <div className="breadcrumb">
             <button
-              className="icon-button mobile-menu"
-              aria-label="打开文件导航"
-              onClick={() => setSidebar(true)}
+              className="icon-button navigation-toggle"
+              aria-label={writing.narrow || sidebarCollapsed ? '打开文件导航' : '收起文件导航'}
+              aria-controls="file-navigation"
+              aria-expanded={writing.narrow ? sidebar : !sidebarCollapsed}
+              onClick={() =>
+                writing.narrow ? setSidebar(true) : setSidebarCollapsed(!sidebarCollapsed)
+              }
             >
               <Menu size={21} />
             </button>
             <span>
               {workspace?.owner === 'local' ? '我的笔记' : workspace?.repo || 'InkBridge'}
             </span>
-            <span className="breadcrumb-slash">/</span>
-            <strong>
-              {panel === 'attachments'
-                ? '附件'
-                : path.includes('/')
-                  ? path.slice(0, path.lastIndexOf('/'))
-                  : '书写空间'}
-            </strong>
           </div>
           <div className="topbar-actions">
             <span className={`cloud-status ${syncError || unresolved ? 'attention' : ''}`}>
@@ -763,7 +791,6 @@ export default function App() {
           <section className="attachments-page">
             <div className="page-heading">
               <div>
-                <span className="eyebrow">A PLACE FOR THE DETAILS</span>
                 <h1>笔记里的附件</h1>
                 <p>图片、PDF 与其他材料，都在原来的路径里。</p>
               </div>
@@ -855,7 +882,7 @@ export default function App() {
             ) : (
               <div className="empty-state">
                 <Folder size={36} />
-                <h2>给灵感留一点附件空间</h2>
+                <h2>暂无附件</h2>
                 <p>连接笔记库，或上传图片、PDF 等支持的文件。</p>
               </div>
             )}
@@ -864,81 +891,75 @@ export default function App() {
           <>
             <section className="note-heading">
               <div className="note-heading-main">
-                <span className="eyebrow">A LITTLE SPACE TO THINK</span>
                 <h1>{noteTitle(path)}</h1>
                 <div className="note-meta">
-                  <span>
-                    <FileText size={13} />
-                    {path}
-                  </span>
                   <span className={saveError ? 'save-failed' : 'saved-status'}>
                     {saveStatus === '本地已保存' && <Check size={13} />}
                     {saveStatus}
                   </span>
                 </div>
               </div>
-              <div className="note-actions">
-                <button
-                  className="icon-button"
-                  title="重命名笔记"
-                  aria-label="重命名笔记"
-                  onClick={() => {
-                    setPathError('');
-                    setPathDialog({ kind: 'rename', path });
-                  }}
-                >
-                  <MoreHorizontal size={20} />
-                </button>
-                <button
-                  className="icon-button"
-                  title="删除笔记"
-                  aria-label="删除笔记"
-                  onClick={() => setDeleteConfirm(path)}
-                >
-                  <X size={17} />
-                </button>
-                <button
-                  className={`icon-button preview-toggle ${preview ? 'active' : ''}`}
-                  title="切换预览"
-                  aria-label="切换预览"
-                  onClick={() => setPreview(!preview)}
-                >
-                  <PanelRight size={20} />
-                </button>
-              </div>
             </section>
             <div className="editor-toolbar">
-              <div className="mode-tabs">
-                <button
-                  className={mobileView === 'edit' ? 'active' : ''}
-                  onClick={() => setMobileView('edit')}
-                >
-                  Markdown
-                </button>
-                <button
-                  className={mobileView === 'preview' ? 'active' : ''}
-                  onClick={() => {
-                    setMobileView('preview');
-                    setPreview(true);
-                  }}
-                >
-                  阅读预览
-                </button>
-              </div>
-              <span className="toolbar-tip">每个想法，都值得被留下</span>
-              <button
-                className="icon-button"
-                title="导出 ZIP"
-                aria-label="导出 ZIP"
-                onClick={() => void exportZip()}
+              <div
+                className="mode-tabs"
+                role="toolbar"
+                aria-label="笔记视图"
+                onKeyDown={(event) => {
+                  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                  const buttons = Array.from(event.currentTarget.querySelectorAll('button'));
+                  const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                  const next =
+                    event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? buttons.length - 1
+                        : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) %
+                          buttons.length;
+                  event.preventDefault();
+                  buttons[next]?.focus();
+                }}
               >
-                <ArrowDownToLine size={17} />
-              </button>
+                {(['edit', ...(writing.narrow ? [] : ['split']), 'read'] as WritingMode[]).map(
+                  (mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={writing.mode === mode ? 'active' : ''}
+                      aria-pressed={writing.mode === mode}
+                      aria-controls="note-writing-area"
+                      tabIndex={writing.mode === mode ? 0 : -1}
+                      onClick={(event) => writing.choose(mode, event.detail === 0)}
+                    >
+                      {{ edit: '编辑', split: '分栏', read: '阅读' }[mode]}
+                    </button>
+                  ),
+                )}
+              </div>
+              <NoteActions
+                key={key}
+                path={path}
+                characters={wordCount}
+                lines={editorText.split('\n').length}
+                onRename={() => {
+                  setPathError('');
+                  setPathDialog({ kind: 'rename', path });
+                }}
+                onDelete={() => setDeleteConfirm(path)}
+                onExport={() => void exportZip()}
+              />
             </div>
-            <div className={`writing-area ${preview ? 'with-preview' : ''} mobile-${mobileView}`}>
-              <div className="editor-pane">
+            <div id="note-writing-area" className={`writing-area view-${writing.mode}`}>
+              <div
+                className="editor-pane"
+                hidden={writing.mode === 'read'}
+                onPointerDown={() => writing.markActive('edit')}
+                onFocusCapture={() => writing.markActive('edit')}
+                onWheel={() => writing.markActive('edit')}
+              >
                 <CodeMirror
                   key={key}
+                  ref={writing.editor}
                   value={editorText}
                   extensions={extensions}
                   onChange={edit}
@@ -953,45 +974,30 @@ export default function App() {
                   }}
                 />
               </div>
-              {preview && (
-                <div className="preview-pane">
-                  <div className="preview-label">
-                    <BookOpen size={13} />
-                    预览 <span>按你的原文呈现</span>
-                  </div>
-                  <MarkdownPreview
-                    text={editorText}
-                    path={path}
-                    files={files}
-                    externalImages={externalImages}
-                    onNavigate={(target, heading) => void navigate(target, heading)}
-                    onMessage={setMessage}
-                  />
-                </div>
-              )}
+              <div
+                key={key}
+                ref={writing.preview}
+                className="preview-pane"
+                hidden={writing.mode === 'edit'}
+                onPointerDown={() => writing.markActive('read')}
+                onFocusCapture={() => writing.markActive('read')}
+                onWheel={() => writing.markActive('read')}
+              >
+                <MarkdownPreview
+                  text={editorText}
+                  path={path}
+                  files={files}
+                  externalImages={externalImages}
+                  onNavigate={(target, heading) => void navigate(target, heading)}
+                  onMessage={setMessage}
+                />
+              </div>
             </div>
-            <footer className="editor-footer">
-              <span>
-                {wordCount.toLocaleString()} 字符<span className="footer-separator">·</span>
-                {editorText.split('\n').length} 行<span className="footer-separator">·</span>UTF-8
-              </span>
-              <span>
-                {online ? <span className="connection-dot" /> : <CloudOff size={12} />}
-                {syncing
-                  ? syncStatus
-                  : pending
-                    ? `待上传 ${pending} 项`
-                    : workspace?.lastSync
-                      ? `上次同步 ${new Date(workspace.lastSync).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
-                      : '仅保存在本机'}
-              </span>
-            </footer>
           </>
         ) : (
           <div className="empty-state">
             <BookOpen size={40} />
-            <span className="eyebrow">WELCOME TO INKBRIDGE</span>
-            <h1>把今天的想法，写下来。</h1>
+            <h1>选择或新建笔记</h1>
             <p>笔记先安全保存在本机，再由你同步到 GitHub。</p>
             <div className="empty-actions">
               <button
@@ -1221,7 +1227,6 @@ export default function App() {
           >
             <div className="settings-heading">
               <div>
-                <span className="eyebrow">YOUR OWN LITTLE CORNER</span>
                 <h2>设置与本地数据</h2>
               </div>
               <button
@@ -1235,7 +1240,6 @@ export default function App() {
             <div className="setting-row">
               <div>
                 <strong>外观</strong>
-                <p>给书写选一个舒服的底色。</p>
               </div>
               <select
                 aria-label="外观主题"
@@ -1244,6 +1248,21 @@ export default function App() {
               >
                 <option value="light">纸白</option>
                 <option value="dark">墨夜</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>正文大小</strong>
+                <p>编辑与阅读使用相同字号。</p>
+              </div>
+              <select
+                aria-label="正文大小"
+                value={bodySize}
+                onChange={(event) => setBodySize(Number(event.target.value))}
+              >
+                <option value={18}>标准 · 18px</option>
+                <option value={20}>大号 · 20px</option>
+                <option value={22}>特大 · 22px</option>
               </select>
             </div>
             <div className="setting-row">
@@ -1367,11 +1386,13 @@ export default function App() {
 
 function FileTree({
   files,
+  order,
   selected,
   onSelect,
   prefix = '',
 }: {
   files: NoteFile[];
+  order: NoteOrder;
   selected: string;
   onSelect: (path: string) => void;
   prefix?: string;
@@ -1386,7 +1407,7 @@ function FileTree({
   ].sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const direct = files
     .filter((file) => !file.path.slice(prefix.length).includes('/'))
-    .sort((a, b) => a.path.localeCompare(b.path, 'zh-CN'));
+    .sort((a, b) => compareNotes(a, b, order));
   return (
     <>
       {folders.map((folder) => (
@@ -1402,6 +1423,7 @@ function FileTree({
           <div className="folder-children">
             <FileTree
               files={files.filter((file) => file.path.startsWith(prefix + folder + '/'))}
+              order={order}
               prefix={prefix + folder + '/'}
               selected={selected}
               onSelect={onSelect}

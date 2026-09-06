@@ -11,7 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "check": "npm run typecheck && npm test && npm run build && npm run test:e2e"
+    "check": "npm run typecheck && npm test && npm run build && npm run test:e2e",
+    "build:pages": "tsc -b && vite build --mode github-pages",
+    "preview:pages": "vite preview --mode github-pages --host 127.0.0.1 --port 4174 --strictPort",
+    "test:pages": "playwright test --config playwright.pages.config.ts"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

@@ -1,6 +1,17 @@
 # 部署准备
 
-准备目标为 Cloudflare Pages，也可部署到支持 HTTPS 的静态主机。尚未建立云服务、连接 Cloudflare 账号或公开发布。
+当前发布目标为 GitHub Pages，也保留 Cloudflare Pages 与 HTTPS 静态主机的根路径构建。
+
+## GitHub Pages
+
+- 代码仓库：`FrostFei/InkBridge`；生产地址：`https://frostfei.github.io/InkBridge/`。
+- Pages 发布来源设为 GitHub Actions。`.github/workflows/pages.yml` 在推送 `main` 或手动触发时运行类型检查、单元测试、根路径 E2E、Pages 子路径 E2E，全部通过后才上传并发布 `dist-pages`。
+- `npm run build:pages` 选择 `github-pages` 模式，统一设置 Vite base、manifest id/start_url/scope、图标地址及 SW 的注册范围为 `/InkBridge/`。`npm run preview:pages` 在 4174 端口预览；`npm run test:pages` 检查资源、离线重载和 CSP。
+- 默认 `npm run build` 仍输出根路径版本到 `dist`，本地 4173 预览不受影响。
+- GitHub Pages 不解释 Cloudflare `_headers`。HTML 自带 CSP 与 referrer meta；`frame-ancestors`、X-Frame-Options、Permissions-Policy 和自定义 Cache-Control 不能通过这些 meta 等价配置，因此不宣称与 Cloudflare 的响应头完全相同。需要这些头时使用支持自定义响应头的域名代理或托管平台。
+- 发布只包含静态产物，不上传笔记、附件、Token 或测试数据。不需要配置个人 PAT 为 Actions Secret；部署使用 GitHub 自动生成的工作流令牌与 OIDC。
+- 不同 `github.io` 项目路径可能共享同一浏览器来源；路径不是 IndexedDB 的隔离边界。如需与同账号其他网页隔离，可配置独立域名并调整部署 base。
+- 回滚通过选定先前已验证的提交重新运行发布流程；网页回滚不回滚 IndexedDB 或 GitHub 笔记历史。
 
 ## Cloudflare Pages
 
