@@ -238,7 +238,23 @@ test('long-note scroll positions survive repeated view switches', async ({ page 
   await previewScroll.evaluate((element) => {
     element.scrollTop = 1200;
   });
-  const original = await editorScroll.evaluate((element) => element.scrollTop);
+  // CodeMirror measures newly visible virtualized lines after scrolling. Linux
+  // fonts can adjust their heights, so capture the baseline once layout settles.
+  const original = await editorScroll.evaluate(
+    (element) =>
+      new Promise<number>((resolve) => {
+        let previous = '',
+          stable = 0;
+        const measure = () => {
+          const next = `${element.scrollTop}:${element.scrollHeight}`;
+          stable = next === previous ? stable + 1 : 0;
+          previous = next;
+          if (stable >= 4) resolve(element.scrollTop);
+          else requestAnimationFrame(measure);
+        };
+        requestAnimationFrame(measure);
+      }),
+  );
   for (let i = 0; i < 3; i++) {
     await page.getByRole('button', { name: '编辑', exact: true }).click();
     await page.getByRole('button', { name: '阅读', exact: true }).click();
