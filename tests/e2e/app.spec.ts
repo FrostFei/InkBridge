@@ -320,6 +320,8 @@ test('editor input appearance follows the app theme independently of the system 
       await page.emulateMedia({ colorScheme: systemTheme });
       await expect(page.locator('html')).toHaveCSS('color-scheme', appTheme);
       await expect(page.locator('.cm-content')).toHaveCSS('color-scheme', appTheme);
+      await expect(page.locator('.cm-cursorLayer, .cm-selectionLayer')).toHaveCount(0);
+      await expect(page.locator('.cm-content')).not.toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)');
       const background = appTheme === 'light' ? 'rgb(251, 251, 248)' : 'rgb(32, 39, 35)';
       await expect(page.locator('body')).toHaveCSS('background-color', background);
       await expect(page.locator('.cm-editor')).toHaveCSS('background-color', background);
@@ -327,6 +329,35 @@ test('editor input appearance follows the app theme independently of the system 
     }
   }
 });
+
+for (const touchPoints of [5, 0]) {
+  test(`Mac identification uses native selection only on a touch iPad (${touchPoints} touch points)`, async ({
+    page,
+  }) => {
+    await page.addInitScript((points) => {
+      Object.defineProperty(navigator, 'userAgent', {
+        get: () =>
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
+      });
+      Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+      Object.defineProperty(navigator, 'maxTouchPoints', { get: () => points });
+    }, touchPoints);
+    await start(page);
+    const editor = page.getByRole('textbox', { name: '编辑笔记' });
+    // The emulated Mac platform uses Command, irrespective of the test host OS.
+    await editor.click();
+    await editor.press('Meta+a');
+    await page.keyboard.insertText('选区替换检查');
+    await expect(editor).toHaveText('选区替换检查');
+    await expect(page.locator('.cm-selectionLayer')).toHaveCount(touchPoints ? 0 : 1);
+    await editor.press('Meta+a');
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('选区替换检查');
+    await page.keyboard.insertText('中文替换后保存');
+    await expect(page.locator('.saved-status')).toHaveText('本地已保存');
+    await page.reload();
+    await expect(editor).toHaveText('中文替换后保存');
+  });
+}
 
 test('iPad typography stays readable across widths and remembers the chosen text size', async ({
   page,

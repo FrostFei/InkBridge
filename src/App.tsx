@@ -55,6 +55,11 @@ import './styles.css';
 type Draft = { text: string; revision: number; dirty: boolean; pending?: Promise<boolean> };
 type PathDialog = { kind: 'create' | 'rename' | 'draft'; path: string };
 type NoteOrder = 'asc' | 'desc';
+// iPadOS can identify as a Mac in desktop browsing mode, even with a hardware keyboard.
+// Keep native input selection visible while validating the iPad IME candidate highlight issue.
+const useNativeSelection =
+  /iPad/.test(navigator.userAgent) ||
+  (/Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1);
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const basename = (path: string) => path.split('/').pop() || path;
 const noteTitle = (path: string) => basename(path).replace(/\.(md|markdown)$/i, '');
@@ -966,6 +971,7 @@ export default function App() {
                   theme={theme === 'dark' ? 'dark' : 'light'}
                   height="100%"
                   basicSetup={{
+                    drawSelection: !useNativeSelection,
                     lineNumbers: false,
                     foldGutter: false,
                     highlightActiveLine: false,
