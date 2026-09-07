@@ -34,6 +34,7 @@ async function connect(page: Page) {
   await page.getByRole('button', { name: '校验并读取分支' }).click();
   await page.getByRole('button', { name: '连接并同步' }).click();
   await expect(page.getByRole('dialog', { name: '连接 GitHub 仓库' })).toBeHidden();
+  await page.getByRole('button', { name: '全部展开', exact: true }).click();
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '开始', exact: true }).click();
   await expect(page.getByRole('textbox', { name: '编辑笔记' })).toContainText('原始内容');
@@ -564,6 +565,7 @@ test('GitHub snapshot, atomic rename, persistent conflict draft and merge conver
   await page.getByRole('button', { name: '校验并读取分支' }).click();
   await page.getByRole('button', { name: '连接并同步' }).click();
   await expect.poll(() => remote.text('日记/开始.md')).toContain('保留双方想法的草稿');
+  await page.getByRole('button', { name: '全部展开', exact: true }).click();
   await page.getByRole('button', { name: '开始', exact: true }).click();
   await page.getByRole('button', { name: '更多笔记操作', exact: true }).click();
   await page.getByRole('button', { name: '重命名笔记', exact: true }).click();
