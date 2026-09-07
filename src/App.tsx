@@ -124,7 +124,29 @@ export default function App() {
   const [syncError, setSyncError] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
-  const [tokens, setTokens] = useState<Record<string, string>>({});
+  const [sessionTokens, setSessionTokens] = useState<Record<string, string>>({});
+  const savedCredentials = useLiveQuery(() => db.credentials.toArray(), []);
+  const tokens = useMemo(
+    () => ({
+      ...Object.fromEntries((savedCredentials ?? []).map((item) => [item.workspaceId, item.token])),
+      ...sessionTokens,
+    }),
+    [savedCredentials, sessionTokens],
+  );
+  const remembersAuthorization = (savedCredentials ?? []).some(
+    (item) => item.workspaceId === workspaceId,
+  );
+  const [credentialBusy, setCredentialBusy] = useState(false);
+  async function setAuthorization(id: string, token: string, remember: boolean) {
+    if (remember) await db.credentials.put({ workspaceId: id, token });
+    else await db.credentials.delete(id);
+    setSessionTokens((current) => {
+      const next = { ...current };
+      if (remember || !token) delete next[id];
+      else next[id] = token;
+      return next;
+    });
+  }
   const [connect, setConnect] = useState(false);
   const [settings, setSettings] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(false);
@@ -792,14 +814,14 @@ export default function App() {
             </span>
             <button
               className="sync-button"
-              aria-label="手动同步"
+              aria-label="同步"
               aria-busy={syncing}
               title="立即保存当前修改并与 GitHub 同步"
-              disabled={syncing}
+              disabled={syncing || savedCredentials === undefined}
               onClick={() => void runSync()}
             >
               <RefreshCw className={syncing ? 'spin' : ''} size={16} />
-              {syncing ? '正在同步' : '手动同步'}
+              {syncing ? '正在同步' : '同步'}
             </button>
           </div>
         </header>
@@ -1112,10 +1134,10 @@ export default function App() {
         <ConnectDialog
           workspace={workspace}
           onClose={() => setConnect(false)}
-          onConnect={async (owner, repo, branch, token) => {
+          onConnect={async (owner, repo, branch, token, remember) => {
             if (!(await flush())) throw new Error('请先处理本地保存失败并备份草稿。');
             const target = await createWorkspace(owner, repo, branch);
-            setTokens((current) => ({ ...current, [target.id]: token }));
+            await setAuthorization(target.id, token, remember);
             setWorkspaceId(target.id);
             setPath('');
             setConnect(false);
@@ -1368,6 +1390,67 @@ export default function App() {
                 onChange={(event) => setExternalImages(event.target.checked)}
               />
             </div>
+            {workspace && workspace.owner !== 'local' && (
+              <div className="setting-block">
+                <h3>GitHub 授权</h3>
+                <div className="setting-row">
+                  <div>
+                    <strong>在此设备记住授权</strong>
+                    <p>
+                      {remembersAuthorization
+                        ? '已记住，重新打开后可继续同步。'
+                        : tokens[workspaceId]
+                          ? '仅本次会话有效，刷新后需重新输入。'
+                          : '尚未授权，请先连接 GitHub。'}
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    aria-label="在此设备记住授权"
+                    checked={remembersAuthorization}
+                    disabled={!tokens[workspaceId] || syncing || credentialBusy}
+                    onChange={async (event) => {
+                      const remember = event.target.checked;
+                      setCredentialBusy(true);
+                      try {
+                        await setAuthorization(workspaceId, tokens[workspaceId], remember);
+                        setMessage(
+                          remember
+                            ? '已在此设备记住当前笔记库授权。'
+                            : '已取消记住授权，本次会话仍可同步。',
+                        );
+                      } catch {
+                        setMessage('无法更新本机授权记录，请重试。');
+                      } finally {
+                        setCredentialBusy(false);
+                      }
+                    }}
+                  />
+                </div>
+                <p className="hint">
+                  Token 保存在当前浏览器，仅在你信任的个人设备上开启；不包含在笔记同步和导出中。
+                </p>
+                <button
+                  className="secondary"
+                  disabled={
+                    (!tokens[workspaceId] && !remembersAuthorization) || syncing || credentialBusy
+                  }
+                  onClick={async () => {
+                    setCredentialBusy(true);
+                    try {
+                      await setAuthorization(workspaceId, '', false);
+                      setMessage('已清除当前笔记库在此设备的授权，本地笔记仍保留。');
+                    } catch {
+                      setMessage('无法清除本机授权记录，请重试。');
+                    } finally {
+                      setCredentialBusy(false);
+                    }
+                  }}
+                >
+                  清除授权
+                </button>
+              </div>
+            )}
             <div className="setting-block">
               <h3>
                 <ShieldCheck size={18} />
@@ -1427,21 +1510,6 @@ export default function App() {
                 >
                   连接 GitHub
                 </button>
-                {tokens[workspaceId] && (
-                  <button
-                    className="secondary"
-                    onClick={() => {
-                      setTokens((current) => {
-                        const next = { ...current };
-                        delete next[workspaceId];
-                        return next;
-                      });
-                      setMessage('会话 Token 已移除，本地文件仍可离线编辑。');
-                    }}
-                  >
-                    移除会话 Token
-                  </button>
-                )}
               </div>
               {missing.length > 0 && (
                 <details>

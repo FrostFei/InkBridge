@@ -8,6 +8,7 @@ export class InkBridgeDatabase extends Dexie {
   files!: Table<NoteFile, [string, string]>;
   conflicts!: Table<Conflict, string>;
   transactions!: Table<SyncTransaction, string>;
+  credentials!: Table<{ workspaceId: string; token: string }, string>;
   constructor(name = 'inkbridge-v1') {
     super(name);
     this.version(1).stores({
@@ -16,6 +17,8 @@ export class InkBridgeDatabase extends Dexie {
       conflicts: 'id,workspaceId',
       transactions: 'id,workspaceId,phase',
     });
+    // Opt-in credentials stay separate from notes and from exported/synchronized data.
+    this.version(2).stores({ credentials: 'workspaceId' });
   }
 }
 export const db = new InkBridgeDatabase();

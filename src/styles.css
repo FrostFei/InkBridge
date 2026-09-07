@@ -1184,6 +1184,17 @@ p {
   grid-template-columns: 1fr 1fr;
   gap: 15px;
 }
+.dialog label.remember-authorization {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.remember-authorization input {
+  flex-shrink: 0;
+}
 .dialog .hint,
 .hint {
   font-size: 13px !important;

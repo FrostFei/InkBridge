@@ -4,7 +4,9 @@
 
 在 GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens 创建 Token，选择笔记仓库的资源所有者，仅选定所需的测试／笔记仓库。Repository permissions 中 `Contents` 设为 Read and write；`Metadata` 为 GitHub 必需的只读权限。不要授予 Administration、Actions 或 Workflows 等无关权限。设置适当到期时间；组织仓库可能需要组织审批。
 
-在 InkBridge 连接面板输入所有者、仓库名和 Token，读取已有分支后选择。这里的仓库名不是 URL，也不要将 Token 放到 URL 中。Token 仅保存在当前页面内存；刷新后重新输入。请勿把 Token 发到聊天、写进源码、前端环境变量、笔记、日志或导出文件。操作依据 [GitHub Token 官方说明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) 与 [Git Database API](https://docs.github.com/en/rest/git)。
+在 InkBridge 连接面板输入所有者、仓库名和 Token，读取已有分支后选择。这里的仓库名不是 URL，也不要将 Token 放到 URL 中。默认 Token 仅在当前页面内存；勾选“在此设备记住授权”后，按笔记库与分支保存到本机 IndexedDB，重新打开可继续同步。已连接的会话可在“设置与本地数据 → GitHub 授权”开启记住。取消勾选保留本次会话，“清除授权”同时移除本机记录与当前会话授权，不删除笔记，也不撤销 GitHub 上的 Token。请勿把 Token 发到聊天、写进源码、前端环境变量、笔记、日志或导出文件。操作依据 [GitHub Token 官方说明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) 与 [Git Database API](https://docs.github.com/en/rest/git)。
+
+记住授权是个人设备上的便利选项，不是系统钥匙串：Token 未做应用层加密，同源脚本和能够访问此浏览器数据的人仍可能读取它。凭据独立于笔记表，导出与同步只读取笔记数据；Markdown 清洗、CSP 和不缓存 GitHub API 请求的策略继续适用。浏览器清理网站数据、隐私浏览会话结束或 Token 过期后需要重新输入；不同浏览器或网站地址不会共享记录。
 
 连接时可以验证仓库和分支可读以及可见的仓库权限；没有实际写入就无法完整证明 Token 的 Contents 写权限与所有分支规则允许提交。第一次真实写入仅在授权的测试仓库进行。分支保护、强制签名和组织策略可能拒绝提交；应用保留本地更改，不禁用保护、不强制推送。
 

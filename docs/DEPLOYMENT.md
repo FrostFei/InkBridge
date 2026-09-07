@@ -30,7 +30,7 @@
 - CSP 仅允许本地脚本和到 `api.github.com` 的连接；没有第三方统计或字体。CodeMirror 需要内联样式，因此仅 `style-src` 允许 `unsafe-inline`，脚本仍不允许。
 - 外部图片由用户显式开启；开启后图片主机会看到请求，因此默认关闭。私有附件通过授权 API 下载并使用 Blob URL。
 - 禁止 iframe、插件对象、表单提交及其他站点嵌入本应用。笔记 HTML 在显示前清洗，危险 URL 被丢弃。
-- Service Worker 仅预缓存构建资源；不建立 GitHub API 通用缓存。笔记缓存明确写入 IndexedDB，Token 不写入其中。
+- Service Worker 仅预缓存构建资源；不建立 GitHub API 通用缓存。笔记缓存明确写入 IndexedDB；用户勾选“在此设备记住授权”时，Token 写入独立凭据表，不参与构建、笔记同步或导出。
 - Service Worker 更新提示采用 [Vite PWA 的手动刷新流程](https://vite-pwa-org.netlify.app/guide/prompt-for-update)。不要在未保存时强制刷新，也不要让其他标签页的更新打断正在输入的页面。
 - 本地 Vite preview 不自动解释 Cloudflare `_headers`；生产站点必须实际检查响应头。部署到其他主机时转换并应用同等响应头。
 

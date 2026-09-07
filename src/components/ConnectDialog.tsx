@@ -9,11 +9,18 @@ export function ConnectDialog({
 }: {
   workspace?: Workspace;
   onClose: () => void;
-  onConnect: (owner: string, repo: string, branch: string, token: string) => Promise<void>;
+  onConnect: (
+    owner: string,
+    repo: string,
+    branch: string,
+    token: string,
+    remember: boolean,
+  ) => Promise<void>;
 }) {
   const [owner, setOwner] = useState(workspace?.owner === 'local' ? '' : workspace?.owner || '');
   const [repo, setRepo] = useState(workspace?.owner === 'local' ? '' : workspace?.repo || '');
   const [token, setToken] = useState('');
+  const [remember, setRemember] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const [branch, setBranch] = useState(workspace?.branch || 'main');
   const [busy, setBusy] = useState(false);
@@ -47,7 +54,7 @@ export function ConnectDialog({
                 throw new Error('仓库中没有已有分支。请先在电脑上提交一份笔记。');
               setBranches(available);
               setBranch(available.includes(branch) ? branch : available[0]);
-            } else await onConnect(owner.trim(), repo.trim(), branch, token.trim());
+            } else await onConnect(owner.trim(), repo.trim(), branch, token.trim(), remember);
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : '连接失败，请重试。');
           } finally {
@@ -105,9 +112,19 @@ export function ConnectDialog({
             placeholder="细粒度 Personal Access Token"
           />
         </label>
+        <label className="remember-authorization">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+          />
+          在此设备记住授权
+        </label>
         <p className="hint">
-          Token 只保存在当前页面内存，刷新后需重新输入。仅授权这个笔记仓库，并将 Contents 权限设为
-          Read and write。离线编辑不需要 Token。
+          {remember
+            ? 'Token 将保存在当前浏览器，重新打开后可继续同步。仅在你信任的个人设备上开启，可在设置中清除。'
+            : '未勾选时仅在本次会话使用，刷新后需重新输入。'}
+          仅授权这个笔记仓库，并将 Contents 权限设为 Read and write。离线编辑不需要 Token。
         </p>
         {!!branches.length && (
           <>
