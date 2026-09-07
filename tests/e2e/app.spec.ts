@@ -777,12 +777,13 @@ test('an existing session can be remembered in settings and forgetting keeps onl
   const remember = page.getByLabel('在此设备记住授权', { exact: true });
   await settings.click();
   await expect(remember).not.toBeChecked();
-  await remember.check();
+  // The controlled checkbox updates after the credential is persisted to IndexedDB.
+  await remember.click();
   await expect(remember).toBeChecked();
   await page.reload();
   await settings.click();
   await expect(remember).toBeChecked();
-  await remember.uncheck();
+  await remember.click();
   await expect(remember).not.toBeChecked();
   await page.getByRole('button', { name: '关闭设置' }).click();
   await page.getByRole('button', { name: '同步', exact: true }).click();
