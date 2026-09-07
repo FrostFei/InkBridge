@@ -59,6 +59,12 @@ test('note sorting reverses files at every level without reordering or expanding
   const aFolder = tree.locator(':scope > details').first();
   const nested = aFolder.locator(':scope > .folder-children > details').nth(1);
   const order = page.getByRole('combobox', { name: '笔记排序' });
+  await expect(tree.locator('details[open]')).toHaveCount(0);
+  await order.selectOption('desc');
+  await expect(tree.locator('details[open]')).toHaveCount(0);
+  await order.selectOption('asc');
+  await page.getByRole('button', { name: '全部展开', exact: true }).click();
+  await expect(tree.locator('details[open]')).toHaveCount(4);
   await expect(order).toHaveValue('asc');
   await expect(tree.locator(':scope > details > summary > span')).toHaveText([
     'A-folder',
@@ -75,6 +81,7 @@ test('note sorting reverses files at every level without reordering or expanding
   await aFolder.locator(':scope > summary').click();
   await order.selectOption('desc');
   await expect(aFolder).not.toHaveAttribute('open');
+  await expect(nested).toHaveAttribute('open');
   await expect(tree.locator(':scope > details > summary > span')).toHaveText([
     'A-folder',
     'B-folder',
@@ -103,6 +110,7 @@ test('note sorting reverses files at every level without reordering or expanding
     '当前笔记的内容与选中状态应保持不变。',
   );
   await page.reload();
+  await expect(tree.locator('details[open]')).toHaveCount(0);
   await expect(order).toHaveValue('desc');
   await expect.poll(rootPaths).toEqual(['Z-note.md', 'A-note.md']);
   await page.getByRole('textbox', { name: '搜索笔记' }).fill('note');
@@ -115,7 +123,16 @@ test('note sorting reverses files at every level without reordering or expanding
     )
     .toEqual(['Z-note', 'Z-note', 'Z-note', 'M-note', 'M-note', 'A-note', 'A-note', 'A-note']);
   await page.getByRole('button', { name: '清除搜索' }).click();
+  await expect(tree.locator('details[open]')).toHaveCount(0);
+  await page.getByRole('button', { name: '全部展开', exact: true }).click();
+  await page.getByRole('button', { name: '全部收起', exact: true }).click();
+  await expect(tree.locator('details[open]')).toHaveCount(0);
+  await aFolder.locator(':scope > summary').focus();
+  await aFolder.locator(':scope > summary').press('Enter');
+  await expect(aFolder).toHaveAttribute('open');
   await order.selectOption('asc');
+  await expect(aFolder).toHaveAttribute('open');
+  await expect(nested).not.toHaveAttribute('open');
   expect(await rootPaths()).toEqual(['A-note.md', 'Z-note.md']);
   await page.setViewportSize({ width: 834, height: 1194 });
   await page.getByRole('button', { name: '打开文件导航', exact: true }).click();
@@ -123,6 +140,56 @@ test('note sorting reverses files at every level without reordering or expanding
   const bounds = await order.boundingBox();
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(280);
   await page.screenshot({ path: 'artifacts/inkbridge-note-sort.png', fullPage: true });
+});
+
+test('recent edits provide durable quick access, keep folder state and track rename and deletion', async ({
+  page,
+}) => {
+  await start(page);
+  const recent = page.getByRole('button', { name: '最近修改', exact: true });
+  const tree = page.getByRole('navigation', { name: '笔记文件树' });
+  await recent.click();
+  await expect(tree).toContainText('在本机编辑后的笔记会显示在这里');
+  await createNote(page, 'A/同名.md');
+  await edit(page, '第一份正文');
+  await createNote(page, 'B/同名.md');
+  await edit(page, '第二份正文');
+  await recent.click();
+  await expect(tree.locator('.file-row small')).toHaveText(['B/同名.md', 'A/同名.md']);
+  await tree.getByTitle('A/同名.md', { exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '编辑笔记' })).toHaveText('第一份正文');
+  // Merely opening a note must not reorder the modification list.
+  await expect(tree.locator('.file-row small')).toHaveText(['B/同名.md', 'A/同名.md']);
+  await edit(page, '第一份修改后的正文');
+  await expect(tree.locator('.file-row small')).toHaveText(['A/同名.md', 'B/同名.md']);
+  await page.reload();
+  await recent.click();
+  await expect(tree.locator('.file-row small')).toHaveText(['A/同名.md', 'B/同名.md']);
+  await page.getByRole('button', { name: '更多笔记操作', exact: true }).click();
+  await page.getByRole('button', { name: '重命名笔记', exact: true }).click();
+  await page.getByLabel('笔记路径', { exact: true }).fill('C/新名称.md');
+  await page.getByRole('button', { name: '确认重命名' }).click();
+  await expect(tree.locator('.file-row small')).toHaveText(['C/新名称.md', 'B/同名.md']);
+  await page.getByRole('button', { name: '更多笔记操作', exact: true }).click();
+  await page.getByRole('button', { name: '删除笔记', exact: true }).click();
+  await page.getByRole('button', { name: '确认删除', exact: true }).click();
+  await expect(tree.locator('.file-row small')).toHaveText(['B/同名.md']);
+  await page.getByRole('button', { name: /^全部笔记/ }).click();
+  await expect(tree.locator('details[open]')).toHaveCount(0);
+  await page.getByRole('button', { name: '全部展开', exact: true }).click();
+  await recent.click();
+  await page.getByRole('button', { name: /^全部笔记/ }).click();
+  await expect(tree.locator('details[open]')).toHaveCount(1);
+  await page.setViewportSize({ width: 834, height: 1194 });
+  await page.getByRole('button', { name: '打开文件导航', exact: true }).click();
+  await recent.tap();
+  await page.getByRole('button', { name: /^全部笔记/ }).tap();
+  await expect(page.getByRole('button', { name: '全部收起', exact: true })).toBeInViewport();
+  await recent.tap();
+  await page.screenshot({ path: 'artifacts/inkbridge-recent-notes.png', fullPage: true });
+  await tree.getByTitle('B/同名.md', { exact: true }).tap();
+  await expect(page.getByRole('textbox', { name: '编辑笔记' })).toHaveText('第二份正文');
+  await expect(page.locator('.app-shell')).not.toHaveClass(/sidebar-open/);
 });
 
 test('sidebar width supports drag, keyboard, touch and viewport-safe persistence', async ({

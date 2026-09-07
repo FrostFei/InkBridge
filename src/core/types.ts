@@ -18,6 +18,8 @@ export interface NoteFile {
   baseSha: string | null;
   revision: number;
   dirty: boolean;
+  /** Last actual local edit; absent for legacy files and initial GitHub downloads. */
+  localModifiedAt?: number;
 }
 export interface TreeEntry {
   path: string;

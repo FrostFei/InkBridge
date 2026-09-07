@@ -296,6 +296,7 @@ async function acknowledge(transaction: SyncTransaction, snapshot: RemoteSnapsho
         baseSha: confirmed?.sha ?? null,
         revision: now ? now.revision + (!equalValue(now.current, current) ? 1 : 0) : 0,
         dirty: !equalValue(base, current),
+        localModifiedAt: now?.localModifiedAt,
       });
     }
     await db.files.bulkPut(writes);

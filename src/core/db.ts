@@ -105,6 +105,7 @@ async function saveValue(
       current,
       revision: (previous?.revision ?? 0) + 1,
       dirty: !equalValue(previous?.base ?? null, current),
+      localModifiedAt: Date.now(),
     };
     await db.files.put(file);
     return file;
@@ -177,6 +178,7 @@ export async function renameFile(
       baseSha: target?.baseSha ?? null,
       revision: (target?.revision ?? 0) + 1,
       dirty: !equalValue(target?.base ?? null, source.current),
+      localModifiedAt: Date.now(),
     });
   });
 }

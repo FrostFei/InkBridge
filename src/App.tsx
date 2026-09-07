@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Cloud,
   CloudOff,
+  Clock3,
   FileText,
   Folder,
   GitBranch,
@@ -135,6 +136,17 @@ export default function App() {
   const [noteOrder, setNoteOrder] = useState<NoteOrder>(() =>
     safeRead('inkbridge.noteOrder') === 'desc' ? 'desc' : 'asc',
   );
+  const [noteList, setNoteList] = useState<'all' | 'recent'>('all');
+  const [folderState, setFolderState] = useState({ workspaceId: '', paths: new Set<string>() });
+  const expandedFolders =
+    folderState.workspaceId === workspaceId ? folderState.paths : new Set<string>();
+  const toggleFolder = (folder: string) =>
+    setFolderState((previous) => {
+      const paths = new Set(previous.workspaceId === workspaceId ? previous.paths : []);
+      if (paths.has(folder)) paths.delete(folder);
+      else paths.add(folder);
+      return { workspaceId, paths };
+    });
   const [panel, setPanel] = useState<'notes' | 'attachments'>('notes');
   const [sidebar, setSidebar] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -157,6 +169,18 @@ export default function App() {
   const { offlineReady, needRefresh, update } = useAppUpdate();
   const activeFiles = files.filter((file) => file.current !== null);
   const notes = activeFiles.filter((file) => file.current?.kind === 'text');
+  const recentNotes = notes
+    .filter((file) => file.localModifiedAt !== undefined)
+    .sort(
+      (a, b) => b.localModifiedAt! - a.localModifiedAt! || a.path.localeCompare(b.path, 'zh-CN'),
+    )
+    .slice(0, 20);
+  const allFolders = new Set(
+    notes.flatMap((file) => {
+      const parts = file.path.split('/');
+      return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/') + '/');
+    }),
+  );
   const attachments = activeFiles.filter((file) => file.current?.kind === 'binary');
   const pending = files.filter((file) => file.dirty).length;
   const missing = attachments.filter(
@@ -569,14 +593,26 @@ export default function App() {
         </div>
         <div className="sidebar-navigation">
           <button
-            className={panel === 'notes' ? 'active' : ''}
+            className={panel === 'notes' && noteList === 'all' ? 'active' : ''}
             onClick={() => {
               setPanel('notes');
-              setSidebar(false);
+              setNoteList('all');
             }}
           >
             <BookOpen size={17} />
             全部笔记<span>{notes.length}</span>
+          </button>
+          <button
+            className={panel === 'notes' && noteList === 'recent' ? 'active' : ''}
+            title="最近在本机修改的 20 篇笔记"
+            onClick={() => {
+              setPanel('notes');
+              setNoteList('recent');
+              setQuery('');
+            }}
+          >
+            <Clock3 size={17} />
+            最近修改
           </button>
           <button
             className={panel === 'attachments' ? 'active' : ''}
@@ -597,6 +633,7 @@ export default function App() {
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
+              setNoteList('all');
               setPanel('notes');
             }}
           />
@@ -607,21 +644,29 @@ export default function App() {
           )}
         </label>
         <div className="tree-heading">
-          <span>{query ? `${searchResults.length} 个搜索结果` : '笔记文件'}</span>
-          <select
-            className="note-order"
-            aria-label="笔记排序"
-            title="按笔记名称排序，文件夹顺序不变"
-            value={noteOrder}
-            onChange={(event) => {
-              const next = event.target.value === 'desc' ? 'desc' : 'asc';
-              setNoteOrder(next);
-              safeStore('inkbridge.noteOrder', next);
-            }}
-          >
-            <option value="asc">名称正序</option>
-            <option value="desc">名称倒序</option>
-          </select>
+          <span>
+            {noteList === 'recent'
+              ? '最近修改'
+              : query
+                ? `${searchResults.length} 个搜索结果`
+                : '笔记文件'}
+          </span>
+          {noteList === 'all' && (
+            <select
+              className="note-order"
+              aria-label="笔记排序"
+              title="按笔记名称排序，文件夹顺序不变"
+              value={noteOrder}
+              onChange={(event) => {
+                const next = event.target.value === 'desc' ? 'desc' : 'asc';
+                setNoteOrder(next);
+                safeStore('inkbridge.noteOrder', next);
+              }}
+            >
+              <option value="asc">名称正序</option>
+              <option value="desc">名称倒序</option>
+            </select>
+          )}
           <button
             className="icon-button"
             aria-label="新建笔记"
@@ -634,8 +679,38 @@ export default function App() {
             <Plus size={18} />
           </button>
         </div>
+        {noteList === 'all' && !query && allFolders.size > 0 && (
+          <div className="folder-actions" role="group" aria-label="文件夹展开控制">
+            <button onClick={() => setFolderState({ workspaceId, paths: allFolders })}>
+              全部展开
+            </button>
+            <button onClick={() => setFolderState({ workspaceId, paths: new Set() })}>
+              全部收起
+            </button>
+          </div>
+        )}
         <nav className="file-tree" aria-label="笔记文件树">
-          {searchResults.length ? (
+          {noteList === 'recent' ? (
+            recentNotes.length ? (
+              recentNotes.map((file) => (
+                <button
+                  key={file.path}
+                  title={file.path}
+                  className={`file-row recent-note ${path === file.path ? 'selected' : ''}`}
+                  onClick={() => void navigate(file.path)}
+                >
+                  <FileText size={15} />
+                  <span>
+                    {noteTitle(file.path)}
+                    <small>{file.path}</small>
+                  </span>
+                  {file.dirty && <i className="dirty-dot" />}
+                </button>
+              ))
+            ) : (
+              <p className="tree-empty">在本机编辑后的笔记会显示在这里，最多 20 篇。</p>
+            )
+          ) : searchResults.length ? (
             query ? (
               [...searchResults]
                 .sort((a, b) => compareNotes(a, b, noteOrder))
@@ -658,6 +733,8 @@ export default function App() {
                 files={searchResults}
                 order={noteOrder}
                 selected={path}
+                expandedFolders={expandedFolders}
+                onToggleFolder={toggleFolder}
                 onSelect={(next) => void navigate(next)}
               />
             )
@@ -1395,12 +1472,16 @@ function FileTree({
   order,
   selected,
   onSelect,
+  expandedFolders,
+  onToggleFolder,
   prefix = '',
 }: {
   files: NoteFile[];
   order: NoteOrder;
   selected: string;
   onSelect: (path: string) => void;
+  expandedFolders: Set<string>;
+  onToggleFolder: (path: string) => void;
   prefix?: string;
 }) {
   const folders = [
@@ -1417,8 +1498,17 @@ function FileTree({
   return (
     <>
       {folders.map((folder) => (
-        <details className="tree-folder" open key={folder}>
-          <summary>
+        <details
+          className="tree-folder"
+          open={expandedFolders.has(prefix + folder + '/')}
+          key={folder}
+        >
+          <summary
+            onClick={(event) => {
+              event.preventDefault();
+              onToggleFolder(prefix + folder + '/');
+            }}
+          >
             <ChevronDown size={13} />
             <Folder size={15} />
             <span>{folder}</span>
@@ -1433,6 +1523,8 @@ function FileTree({
               prefix={prefix + folder + '/'}
               selected={selected}
               onSelect={onSelect}
+              expandedFolders={expandedFolders}
+              onToggleFolder={onToggleFolder}
             />
           </div>
         </details>

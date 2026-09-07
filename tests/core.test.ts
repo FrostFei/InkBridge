@@ -31,6 +31,31 @@ beforeEach(async () => {
 });
 
 describe('durable local storage', () => {
+  it('tracks actual local modifications without turning downloads or sync acknowledgments into edits', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    try {
+      const remote = new MockRemote({ '笔记.md': t('original') });
+      await connect(remote);
+      expect((await file())?.localModifiedAt).toBeUndefined();
+      await saveText(workspace.id, '笔记.md', 'local edit');
+      expect((await file())?.localModifiedAt).toBe(1000);
+      clock.mockReturnValue(2000);
+      await saveText(workspace.id, '笔记.md', 'local edit');
+      await connect(remote);
+      expect((await file())?.localModifiedAt).toBe(1000);
+      remote.advance({ '笔记.md': t('remote edit') });
+      await connect(remote);
+      expect((await file())?.localModifiedAt).toBe(1000);
+      await renameFile(workspace.id, '笔记.md', '新名称.md');
+      expect((await file('新名称.md'))?.localModifiedAt).toBe(2000);
+      await connect(remote);
+      db.close();
+      await db.open();
+      expect((await file('新名称.md'))?.localModifiedAt).toBe(2000);
+    } finally {
+      clock.mockRestore();
+    }
+  });
   it('persists exact bytes after reopening and permits offline creation', async () => {
     await saveText(workspace.id, '目录/中文 空格.md', '---\r\na: 1\r\n---\r\n正文\r\n');
     db.close();

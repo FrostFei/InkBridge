@@ -360,6 +360,34 @@ p {
   margin-right: -7px;
   padding-right: 7px;
 }
+.folder-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.folder-actions button {
+  flex: 1;
+  min-height: 44px;
+  padding: 6px 4px;
+  color: var(--secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+}
+.folder-actions button:hover {
+  background: var(--hover);
+}
+.recent-note > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recent-note small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tree-heading {
   gap: 4px;
   letter-spacing: 0;
