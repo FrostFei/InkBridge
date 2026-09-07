@@ -332,14 +332,15 @@ export default function App() {
         return;
       }
       syncLock.current = true;
-      if (!(await flush())) {
-        syncLock.current = false;
-        return;
-      }
       setSyncing(true);
       setSyncError('');
-      setSyncStatus('正在同步');
+      setSyncStatus('正在保存本地修改');
       try {
+        if (!(await flush())) {
+          setSyncStatus('本地保存失败');
+          return;
+        }
+        setSyncStatus('正在同步');
         const remote = new GitHubClient({ ...target, token, cache: blobCacheFor(target.id) });
         await syncWorkspace(target.id, remote, setSyncStatus);
         const remaining = await db.conflicts.where('workspaceId').equals(target.id).toArray();
@@ -789,9 +790,16 @@ export default function App() {
               {online ? <Cloud size={16} /> : <CloudOff size={16} />}
               <span>{cloudLabel}</span>
             </span>
-            <button className="sync-button" disabled={syncing} onClick={() => void runSync()}>
+            <button
+              className="sync-button"
+              aria-label="手动同步"
+              aria-busy={syncing}
+              title="立即保存当前修改并与 GitHub 同步"
+              disabled={syncing}
+              onClick={() => void runSync()}
+            >
               <RefreshCw className={syncing ? 'spin' : ''} size={16} />
-              {syncing ? '正在同步' : '同步'}
+              {syncing ? '正在同步' : '手动同步'}
             </button>
           </div>
         </header>

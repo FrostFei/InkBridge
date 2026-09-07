@@ -543,7 +543,7 @@ test('GitHub snapshot, atomic rename, persistent conflict draft and merge conver
   await connect(page);
   await edit(page, '# 我的笔记\n\niPad 本地修改');
   remote.advance({ '日记/开始.md': '# 我的笔记\n\n电脑远端修改' });
-  await page.getByRole('button', { name: '同步', exact: true }).click();
+  await page.getByRole('button', { name: '手动同步', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '处理同步冲突' });
   await expect(dialog).toBeVisible();
   await page
@@ -572,7 +572,7 @@ test('GitHub snapshot, atomic rename, persistent conflict draft and merge conver
   await page.getByRole('textbox', { name: '笔记路径' }).fill('日记/新的 名字.md');
   await page.getByRole('button', { name: '确认重命名' }).click();
   const before = remote.pushes.length;
-  await page.getByRole('button', { name: '同步', exact: true }).click();
+  await page.getByRole('button', { name: '手动同步', exact: true }).click();
   await expect.poll(() => remote.text('日记/新的 名字.md')).toContain('保留双方想法的草稿');
   expect(remote.text('日记/开始.md')).toBeUndefined();
   expect(remote.pushes.length).toBe(before + 1);
@@ -709,10 +709,52 @@ test('attachments report omissions, download on demand, and stay available offli
   await expect(page.getByRole('textbox', { name: '编辑笔记' })).toContainText('原始内容');
   await edit(page, '# 我的笔记\n\n网络失败仍在本地');
   remote.failStatus = 401;
-  await page.getByRole('button', { name: '同步', exact: true }).click();
+  await page.getByRole('button', { name: '手动同步', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('凭据无效');
   await page.reload();
   await expect(page.getByRole('textbox', { name: '编辑笔记' })).toContainText('网络失败仍在本地');
+});
+
+test('manual sync saves fresh input, shows progress and sends one commit per click', async ({
+  page,
+  context,
+}) => {
+  const remote = new MockGitHub();
+  await remote.install(context);
+  await start(page);
+  await connect(page);
+  const sync = page.getByRole('button', { name: '手动同步', exact: true });
+  await expect(sync).toBeEnabled();
+  await expect(sync).toHaveText('手动同步');
+  let release!: () => void;
+  let entered = false;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  remote.beforeRef = async () => {
+    entered = true;
+    await gate;
+  };
+  const editor = page.getByRole('textbox', { name: '编辑笔记' });
+  await editor.click();
+  await editor.press('ControlOrMeta+a');
+  await page.keyboard.insertText('刚刚输入，点击手动同步立即提交。');
+  const before = remote.pushes.length;
+  try {
+    // Do not wait for the local autosave status before requesting synchronization.
+    await sync.click();
+    await expect(sync).toBeDisabled();
+    await expect(sync).toHaveAttribute('aria-busy', 'true');
+    await expect(sync).toHaveText('正在同步');
+    await expect.poll(() => entered).toBe(true);
+  } finally {
+    release();
+  }
+  await expect(sync).toBeEnabled();
+  expect(remote.text('日记/开始.md')).toBe('刚刚输入，点击手动同步立即提交。');
+  expect(remote.pushes.length).toBe(before + 1);
+  await page.reload();
+  await expect(editor).toHaveText('刚刚输入，点击手动同步立即提交。');
 });
 
 test('real Web Locks exclude a second tab and later typing survives an in-flight commit', async ({
@@ -726,9 +768,9 @@ test('real Web Locks exclude a second tab and later typing survives an in-flight
   const second = await context.newPage();
   await start(second);
   await connect(second);
-  await expect(second.getByRole('button', { name: '同步', exact: true })).toBeEnabled();
+  await expect(second.getByRole('button', { name: '手动同步', exact: true })).toBeEnabled();
   await page.bringToFront();
-  await expect(page.getByRole('button', { name: '同步', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '手动同步', exact: true })).toBeEnabled();
   await edit(page, '# 我的笔记\n\n第一个快照');
   let release!: () => void,
     entered = false;
@@ -739,17 +781,17 @@ test('real Web Locks exclude a second tab and later typing survives an in-flight
     entered = true;
     await gate;
   };
-  await page.getByRole('button', { name: '同步', exact: true }).click();
+  await page.getByRole('button', { name: '手动同步', exact: true }).click();
   await expect.poll(() => entered).toBe(true);
   await edit(page, '# 我的笔记\n\n第一个快照\n\n同步期间继续输入');
   // Click does not require focus: both documents share the browser's actual Web Locks manager.
-  await second.getByRole('button', { name: '同步', exact: true }).click();
+  await second.getByRole('button', { name: '手动同步', exact: true }).click();
   await expect(second.getByRole('alert')).toContainText(/同步|标签/);
   release();
-  await expect(page.getByRole('button', { name: '同步', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '手动同步', exact: true })).toBeEnabled();
   await expect(page.getByRole('textbox', { name: '编辑笔记' })).toContainText('同步期间继续输入');
   expect(remote.text('日记/开始.md')).toBe('# 我的笔记\n\n第一个快照');
-  await page.getByRole('button', { name: '同步', exact: true }).click();
+  await page.getByRole('button', { name: '手动同步', exact: true }).click();
   await expect.poll(() => remote.text('日记/开始.md')).toContain('同步期间继续输入');
   await second.close();
 });
