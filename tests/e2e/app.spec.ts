@@ -307,6 +307,27 @@ test('touch mode switches preserve the draft without focusing the hidden editor'
   await page.screenshot({ path: 'artifacts/inkbridge-writing-narrow.png', fullPage: true });
 });
 
+test('editor input appearance follows the app theme independently of the system theme', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await start(page);
+  for (const appTheme of ['light', 'dark', 'light']) {
+    await page.getByRole('button', { name: '设置与本地数据', exact: true }).click();
+    await page.getByLabel('外观主题').selectOption(appTheme);
+    await page.getByRole('button', { name: '关闭设置' }).click();
+    for (const systemTheme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: systemTheme });
+      await expect(page.locator('html')).toHaveCSS('color-scheme', appTheme);
+      await expect(page.locator('.cm-content')).toHaveCSS('color-scheme', appTheme);
+      const background = appTheme === 'light' ? 'rgb(251, 251, 248)' : 'rgb(32, 39, 35)';
+      await expect(page.locator('body')).toHaveCSS('background-color', background);
+      await expect(page.locator('.cm-editor')).toHaveCSS('background-color', background);
+      await edit(page, `中文输入检查 ${appTheme} ${systemTheme}`);
+    }
+  }
+});
+
 test('iPad typography stays readable across widths and remembers the chosen text size', async ({
   page,
 }) => {
